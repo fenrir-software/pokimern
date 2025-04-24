@@ -7,59 +7,164 @@ import 'package:flame/sprite.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/experimental.dart';
 
+// Wrapper widget to manage game switching
 void main() {
-  runApp(GameWidget(game: PokimernGame()));
+  runApp(const MyGameApp());
 }
 
-class PokimernGame extends FlameGame with PanDetector {
+class MyGameApp extends StatefulWidget {
+  const MyGameApp({super.key});
+
+  @override
+  State<MyGameApp> createState() => _MyGameAppState();
+}
+
+class _MyGameAppState extends State<MyGameApp> {
+  int _currentGameIndex = 0;
+  final List<FlameGame Function(VoidCallback)> _gameFactories = [
+    (switchCallback) => SpaceShooterGame(onTripleTap: switchCallback),
+    (switchCallback) => PokimernGameV1(onTripleTap: switchCallback),
+    (switchCallback) => PokimernGameV2(onTripleTap: switchCallback),
+  ];
+
+  void _switchGame() {
+    setState(() {
+      _currentGameIndex = (_currentGameIndex + 1) % _gameFactories.length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: GameWidget(
+          game: _gameFactories[_currentGameIndex](_switchGame),
+        ),
+      ),
+    );
+  }
+}
+
+// First Iteration: SpaceShooterGame
+class SpaceShooterGame extends FlameGame with PanDetector, TapCallbacks {
   late Player player;
-  late SpriteComponent map;
+  final VoidCallback onTripleTap;
+  int _tapCount = 0;
+  DateTime? _lastTapTime;
+
+  SpaceShooterGame({required this.onTripleTap});
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Load the spritesheet for the player
+    player = Player()
+      ..position = size / 2
+      ..width = 25
+      ..height = 50
+      ..anchor = Anchor.center;
+
+    add(player);
+  }
+
+  @override
+  void onPanStart(DragStartInfo info) {
+    player.setVelocity(Vector2.zero());
+  }
+
+  @override
+  void onPanUpdate(DragUpdateInfo info) {
+    final delta = info.delta.global;
+    const speed = 50.0;
+
+    if (delta.x.abs() > delta.y.abs()) {
+      if (delta.x < 0) {
+        player.setVelocity(Vector2(-speed, 0));
+      } else if (delta.x > 0) {
+        player.setVelocity(Vector2(speed, 0));
+      }
+    } else {
+      if (delta.y < 0) {
+        player.setVelocity(Vector2(0, -speed));
+      } else if (delta.y > 0) {
+        player.setVelocity(Vector2(0, speed));
+      }
+    }
+  }
+
+  @override
+  void onPanEnd(DragEndInfo info) {
+    player.setVelocity(Vector2.zero());
+  }
+
+  @override
+  void onTapDown(TapDownEvent event) {
+    final now = DateTime.now();
+    const tripleTapDuration = Duration(milliseconds: 500);
+
+    if (_lastTapTime == null ||
+        now.difference(_lastTapTime!) > tripleTapDuration) {
+      _tapCount = 1;
+    } else {
+      _tapCount++;
+    }
+    _lastTapTime = now;
+
+    if (_tapCount == 3) {
+      _tapCount = 0;
+      _lastTapTime = null;
+      pauseEngine();
+      onTripleTap();
+    }
+  }
+}
+
+class Player extends PositionComponent {
+  static final _paint = Paint()..color = Colors.white;
+  Vector2 velocity = Vector2.zero();
+
+  @override
+  void render(Canvas canvas) {
+    canvas.drawRect(size.toRect(), _paint);
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    position += velocity * dt;
+  }
+
+  void setVelocity(Vector2 newVelocity) {
+    velocity = newVelocity;
+  }
+}
+
+// Second Iteration: PokimernGameV1
+class PokimernGameV1 extends FlameGame with PanDetector, TapCallbacks {
+  late PlayerV1 player;
+  final VoidCallback onTripleTap;
+  int _tapCount = 0;
+  DateTime? _lastTapTime;
+
+  PokimernGameV1({required this.onTripleTap});
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+
     try {
       await Flame.images.load('character_base_16x16.png');
     } catch (e) {
-      print('Error loading player spritesheet: $e');
+      print('Error loading spritesheet: $e');
     }
 
-    // Load the map PNG
-    try {
-      await Flame.images.load('tilesheet_basic.png');
-    } catch (e) {
-      print('Error loading map PNG: $e');
-    }
-
-    // Create map as a single sprite
-    final mapSprite = await Sprite.load('tilesheet_basic.png');
-    const mapWidth = 1280.0; // Adjust to your PNG's width in pixels
-    const mapHeight = 1280.0; // Adjust to your PNG's height in pixels
-    map = SpriteComponent(
-      sprite: mapSprite,
-      size: Vector2(mapWidth, mapHeight),
-      anchor: Anchor.center, // Center the map's anchor for easier clamping
-    );
-    // Center the map initially
-    map.position = Vector2(mapWidth / 2, mapHeight / 2);
-    add(map);
-
-    // Initialize player, centered on screen
-    player = Player(game: this)
-      ..position = size / 2 // Center of screen
-      ..size = Vector2(48, 48) // Sprite size
+    player = PlayerV1(game: this)
+      ..position = size / 2
+      ..size = Vector2(48, 48)
       ..anchor = Anchor.center;
-    add(player);
 
-    // Set camera bounds to cover the entire map
-    camera.setBounds(Rectangle.fromLTRB(
-      0,
-      0,
-      mapWidth,
-      mapHeight,
-    ));
+    add(player);
   }
 
   @override
@@ -71,28 +176,22 @@ class PokimernGame extends FlameGame with PanDetector {
   @override
   void onPanUpdate(DragUpdateInfo info) {
     final delta = info.delta.global;
-    const speed = 100.0; // Pixels per second
-    const deadzone = 0.5; // Ignore tiny movements to reduce jitter
-
-    // Skip small movements to prevent jitter
-    if (delta.length < deadzone) {
-      return;
-    }
+    const speed = 100.0;
 
     if (delta.x.abs() > delta.y.abs()) {
       if (delta.x < 0) {
-        player.setVelocity(Vector2(-speed, 0)); // Left
+        player.setVelocity(Vector2(-speed, 0));
         player.current = PlayerState.left;
       } else if (delta.x > 0) {
-        player.setVelocity(Vector2(speed, 0)); // Right
+        player.setVelocity(Vector2(speed, 0));
         player.current = PlayerState.right;
       }
     } else {
       if (delta.y < 0) {
-        player.setVelocity(Vector2(0, -speed)); // Up
+        player.setVelocity(Vector2(0, -speed));
         player.current = PlayerState.backward;
       } else if (delta.y > 0) {
-        player.setVelocity(Vector2(0, speed)); // Down
+        player.setVelocity(Vector2(0, speed));
         player.current = PlayerState.forward;
       }
     }
@@ -103,20 +202,40 @@ class PokimernGame extends FlameGame with PanDetector {
     player.setVelocity(Vector2.zero());
     player.current = PlayerState.idle;
   }
+
+  @override
+  void onTapDown(TapDownEvent event) {
+    final now = DateTime.now();
+    const tripleTapDuration = Duration(milliseconds: 500);
+
+    if (_lastTapTime == null ||
+        now.difference(_lastTapTime!) > tripleTapDuration) {
+      _tapCount = 1;
+    } else {
+      _tapCount++;
+    }
+    _lastTapTime = now;
+
+    if (_tapCount == 3) {
+      _tapCount = 0;
+      _lastTapTime = null;
+      pauseEngine();
+      onTripleTap();
+    }
+  }
 }
 
 enum PlayerState { forward, backward, right, left, idle }
 
-class Player extends SpriteAnimationGroupComponent<PlayerState> {
+class PlayerV1 extends SpriteAnimationGroupComponent<PlayerState> {
   Vector2 velocity = Vector2.zero();
-  final FlameGame game; // Reference to the game for size access
+  final FlameGame game;
 
-  Player({required this.game}) : super(size: Vector2(16, 16));
+  PlayerV1({required this.game}) : super(size: Vector2(16, 16));
 
   @override
   Future<void> onLoad() async {
     try {
-      // Use Flame.images to access the pre-loaded spritesheet
       final spriteSheet = SpriteSheet(
         image: Flame.images.fromCache('character_base_16x16.png'),
         srcSize: Vector2(16, 16),
@@ -145,15 +264,168 @@ class Player extends SpriteAnimationGroupComponent<PlayerState> {
   @override
   void update(double dt) {
     super.update(dt);
-    // Keep player centered
+    position += velocity * dt;
+    position.x = position.x.clamp(0.0, game.size.x - size.x);
+    position.y = position.y.clamp(0.0, game.size.y - size.y);
+  }
+
+  void setVelocity(Vector2 newVelocity) {
+    velocity = newVelocity;
+  }
+}
+
+// Third Iteration: PokimernGameV2
+class PokimernGameV2 extends FlameGame with PanDetector, TapCallbacks {
+  late PlayerV2 player;
+  late SpriteComponent map;
+  final VoidCallback onTripleTap;
+  int _tapCount = 0;
+  DateTime? _lastTapTime;
+
+  PokimernGameV2({required this.onTripleTap});
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+
+    try {
+      await Flame.images.load('character_base_16x16.png');
+    } catch (e) {
+      print('Error loading player spritesheet: $e');
+    }
+
+    try {
+      await Flame.images.load('tilesheet_basic.png');
+    } catch (e) {
+      print('Error loading map PNG: $e');
+    }
+
+    final mapSprite = await Sprite.load('tilesheet_basic.png');
+    const mapWidth = 1280.0;
+    const mapHeight = 1280.0;
+    map = SpriteComponent(
+      sprite: mapSprite,
+      size: Vector2(mapWidth, mapHeight),
+      anchor: Anchor.center,
+    );
+    map.position = Vector2(mapWidth / 2, mapHeight / 2);
+    add(map);
+
+    player = PlayerV2(game: this)
+      ..position = size / 2
+      ..size = Vector2(48, 48)
+      ..anchor = Anchor.center;
+    add(player);
+
+    camera.setBounds(Rectangle.fromLTRB(0, 0, mapWidth, mapHeight));
+  }
+
+  @override
+  void onPanStart(DragStartInfo info) {
+    player.setVelocity(Vector2.zero());
+    player.current = PlayerState.idle;
+  }
+
+  @override
+  void onPanUpdate(DragUpdateInfo info) {
+    final delta = info.delta.global;
+    const speed = 100.0;
+    const deadzone = 0.5;
+
+    if (delta.length < deadzone) {
+      return;
+    }
+
+    if (delta.x.abs() > delta.y.abs()) {
+      if (delta.x < 0) {
+        player.setVelocity(Vector2(-speed, 0));
+        player.current = PlayerState.left;
+      } else if (delta.x > 0) {
+        player.setVelocity(Vector2(speed, 0));
+        player.current = PlayerState.right;
+      }
+    } else {
+      if (delta.y < 0) {
+        player.setVelocity(Vector2(0, -speed));
+        player.current = PlayerState.backward;
+      } else if (delta.y > 0) {
+        player.setVelocity(Vector2(0, speed));
+        player.current = PlayerState.forward;
+      }
+    }
+  }
+
+  @override
+  void onPanEnd(DragEndInfo info) {
+    player.setVelocity(Vector2.zero());
+    player.current = PlayerState.idle;
+  }
+
+  @override
+  void onTapDown(TapDownEvent event) {
+    final now = DateTime.now();
+    const tripleTapDuration = Duration(milliseconds: 500);
+
+    if (_lastTapTime == null ||
+        now.difference(_lastTapTime!) > tripleTapDuration) {
+      _tapCount = 1;
+    } else {
+      _tapCount++;
+    }
+    _lastTapTime = now;
+
+    if (_tapCount == 3) {
+      _tapCount = 0;
+      _lastTapTime = null;
+      pauseEngine();
+      onTripleTap();
+    }
+  }
+}
+
+class PlayerV2 extends SpriteAnimationGroupComponent<PlayerState> {
+  Vector2 velocity = Vector2.zero();
+  final FlameGame game;
+
+  PlayerV2({required this.game}) : super(size: Vector2(16, 16));
+
+  @override
+  Future<void> onLoad() async {
+    try {
+      final spriteSheet = SpriteSheet(
+        image: Flame.images.fromCache('character_base_16x16.png'),
+        srcSize: Vector2(16, 16),
+      );
+
+      final forwardAnimation = spriteSheet.createAnimation(row: 0, stepTime: 0.2, from: 0, to: 4);
+      final backwardAnimation = spriteSheet.createAnimation(row: 1, stepTime: 0.2, from: 0, to: 4);
+      final rightAnimation = spriteSheet.createAnimation(row: 2, stepTime: 0.2, from: 0, to: 4);
+      final leftAnimation = spriteSheet.createAnimation(row: 3, stepTime: 0.2, from: 0, to: 4);
+      final idleAnimation = spriteSheet.createAnimation(row: 0, stepTime: 0.2, from: 0, to: 1);
+
+      animations = {
+        PlayerState.forward: forwardAnimation,
+        PlayerState.backward: backwardAnimation,
+        PlayerState.right: rightAnimation,
+        PlayerState.left: leftAnimation,
+        PlayerState.idle: idleAnimation,
+      };
+
+      current = PlayerState.idle;
+    } catch (e) {
+      print('Error setting up player animations: $e');
+    }
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
     position = game.size / 2;
-    // Move the map opposite to the player's velocity
-    final map = (game as PokimernGame).map;
+    final map = (game as PokimernGameV2).map;
     map.position -= velocity * dt;
 
-    // Clamp map position to keep PNG edges within view
-    const mapWidth = 1280.0; // Must match mapWidth in onLoad
-    const mapHeight = 1280.0; // Must match mapHeight in onLoad
+    const mapWidth = 1280.0;
+    const mapHeight = 1280.0;
     final halfScreenWidth = game.size.x / 2;
     final halfScreenHeight = game.size.y / 2;
     final minX = halfScreenWidth - mapWidth / 2;
