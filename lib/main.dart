@@ -91,7 +91,7 @@ class StoreScreen extends StatelessWidget {
   }
 }
 
-// Game screen containing the GameWidget
+// Game screen containing the GameWidge
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
