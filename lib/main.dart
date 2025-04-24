@@ -5,6 +5,7 @@ import 'package:flame/input.dart';
 import 'package:flame/events.dart';
 import 'package:flame/sprite.dart';
 import 'package:flame/flame.dart';
+import 'package:flame/experimental.dart';
 
 void main() {
   runApp(GameWidget(game: PokimernGame()));
@@ -12,24 +13,53 @@ void main() {
 
 class PokimernGame extends FlameGame with PanDetector {
   late Player player;
+  late SpriteComponent map;
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Load the spritesheet using Flame.images
+    // Load the spritesheet for the player
     try {
       await Flame.images.load('character_base_16x16.png');
     } catch (e) {
-      print('Error loading spritesheet: $e');
+      print('Error loading player spritesheet: $e');
     }
 
-    player = Player(game: this) // Fixed: Pass the game instance
-      ..position = size / 2
+    // Load the map PNG
+    try {
+      await Flame.images.load('tilesheet_basic.png');
+    } catch (e) {
+      print('Error loading map PNG: $e');
+    }
+
+    // Create map as a single sprite
+    final mapSprite = await Sprite.load('tilesheet_basic.png');
+    const mapWidth = 1280.0; // Adjust to your PNG's width in pixels
+    const mapHeight = 1280.0; // Adjust to your PNG's height in pixels
+    map = SpriteComponent(
+      sprite: mapSprite,
+      size: Vector2(mapWidth, mapHeight),
+      anchor: Anchor.center, // Center the map's anchor for easier clamping
+    );
+    // Center the map initially
+    map.position = Vector2(mapWidth / 2, mapHeight / 2);
+    add(map);
+
+    // Initialize player, centered on screen
+    player = Player(game: this)
+      ..position = size / 2 // Center of screen
       ..size = Vector2(48, 48) // Sprite size
       ..anchor = Anchor.center;
-
     add(player);
+
+    // Set camera bounds to cover the entire map
+    camera.setBounds(Rectangle.fromLTRB(
+      0,
+      0,
+      mapWidth,
+      mapHeight,
+    ));
   }
 
   @override
@@ -42,6 +72,12 @@ class PokimernGame extends FlameGame with PanDetector {
   void onPanUpdate(DragUpdateInfo info) {
     final delta = info.delta.global;
     const speed = 100.0; // Pixels per second
+    const deadzone = 0.5; // Ignore tiny movements to reduce jitter
+
+    // Skip small movements to prevent jitter
+    if (delta.length < deadzone) {
+      return;
+    }
 
     if (delta.x.abs() > delta.y.abs()) {
       if (delta.x < 0) {
@@ -109,10 +145,23 @@ class Player extends SpriteAnimationGroupComponent<PlayerState> {
   @override
   void update(double dt) {
     super.update(dt);
-    position += velocity * dt;
-    // Keep player within screen bounds, casting to double
-    position.x = position.x.clamp(0.0, game.size.x - size.x).toDouble();
-    position.y = position.y.clamp(0.0, game.size.y - size.y).toDouble();
+    // Keep player centered
+    position = game.size / 2;
+    // Move the map opposite to the player's velocity
+    final map = (game as PokimernGame).map;
+    map.position -= velocity * dt;
+
+    // Clamp map position to keep PNG edges within view
+    const mapWidth = 1280.0; // Must match mapWidth in onLoad
+    const mapHeight = 1280.0; // Must match mapHeight in onLoad
+    final halfScreenWidth = game.size.x / 2;
+    final halfScreenHeight = game.size.y / 2;
+    final minX = halfScreenWidth - mapWidth / 2;
+    final maxX = halfScreenWidth + mapWidth / 2;
+    final minY = halfScreenHeight - mapHeight / 2;
+    final maxY = halfScreenHeight + mapHeight / 2;
+    map.position.x = map.position.x.clamp(minX, maxX);
+    map.position.y = map.position.y.clamp(minY, maxY);
   }
 
   void setVelocity(Vector2 newVelocity) {
