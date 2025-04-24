@@ -7,19 +7,99 @@ import 'package:flame/sprite.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/experimental.dart';
 
-// Wrapper widget to manage game switching
-void main() {
-  runApp(const MyGameApp());
-}
-
-class MyGameApp extends StatefulWidget {
-  const MyGameApp({super.key});
+// Placeholder screens for Main Menu, World Editor, and Store
+class MainMenuScreen extends StatelessWidget {
+  const MainMenuScreen({super.key});
 
   @override
-  State<MyGameApp> createState() => _MyGameAppState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/landscape.jpg'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: Center(
+          child: ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GameScreen(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+              textStyle: const TextStyle(fontSize: 20),
+            ),
+            child: const Text('Enter World'),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _MyGameAppState extends State<MyGameApp> {
+class WorldEditorScreen extends StatelessWidget {
+  const WorldEditorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('World Editor')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('World Editor (Placeholder)'),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Back to Game'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class StoreScreen extends StatelessWidget {
+  const StoreScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Store')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Store (Placeholder)'),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Back to Game'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Game screen containing the GameWidget
+class GameScreen extends StatefulWidget {
+  const GameScreen({super.key});
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
   int _currentGameIndex = 0;
   final List<FlameGame Function(VoidCallback)> _gameFactories = [
     (switchCallback) => SpaceShooterGame(onTripleTap: switchCallback),
@@ -27,7 +107,7 @@ class _MyGameAppState extends State<MyGameApp> {
     (switchCallback) => PokimernGameV2(onTripleTap: switchCallback),
   ];
 
-  void _switchGame() {
+  void _cycleGame() {
     setState(() {
       _currentGameIndex = (_currentGameIndex + 1) % _gameFactories.length;
     });
@@ -35,13 +115,94 @@ class _MyGameAppState extends State<MyGameApp> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: GameWidget<FlameGame>(
+        game: _gameFactories[_currentGameIndex](_cycleGame),
+        overlayBuilderMap: {
+          'MenuButton': (context, FlameGame game) => Positioned(
+                top: 40,
+                right: 10,
+                child: ElevatedButton(
+                  onPressed: () {
+                    game.overlays.add('Menu');
+                    game.pauseEngine();
+                  },
+                  child: const Text('Menu'),
+                ),
+              ),
+          'Menu': (context, FlameGame game) => Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  color: Colors.black.withOpacity(0.7),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          game.overlays.remove('Menu');
+                          game.resumeEngine();
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const MainMenuScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        },
+                        child: const Text('Main Menu'),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: () {
+                          game.overlays.remove('Menu');
+                          game.resumeEngine();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const WorldEditorScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('World Editor'),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: () {
+                          game.overlays.remove('Menu');
+                          game.resumeEngine();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const StoreScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('Store'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        },
+        initialActiveOverlays: const ['MenuButton'],
+      ),
+    );
+  }
+}
+
+// Wrapper widget to manage the app
+void main() {
+  runApp(const MyGameApp());
+}
+
+class MyGameApp extends StatelessWidget {
+  const MyGameApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: GameWidget(
-          game: _gameFactories[_currentGameIndex](_switchGame),
-        ),
-      ),
+      home: const MainMenuScreen(),
     );
   }
 }

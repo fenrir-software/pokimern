@@ -22,3 +22,4 @@ flutter:
   assets:
     - assets/images/character_base_16x16.png
     - assets/images/tilesheet_basic.png
+    - assets/images/landscape.jpg
